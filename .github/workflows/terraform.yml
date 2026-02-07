@@ -33,7 +33,7 @@ jobs:
         shell: bash
         # Important: We assume main.tf is in the root directory.
         # If it's in a subfolder, uncomment the next line:
-        #working-directory: terraform 
+        working-directory: terraform 
 
     steps:
       - name: Checkout Code
@@ -52,13 +52,7 @@ jobs:
         with:
           terraform_version: "1.9.0" # Use a stable version
       
-      - name: Debug files
-        run: |
-          echo "Current path:"
-          pwd
-          echo "List files:"
-          ls -la
-
+  
 
       # 2️⃣ Init (Uses bucket defined in versions.tf)
       - name: Terraform Init
