@@ -66,7 +66,7 @@ jobs:
         if: github.event.inputs.action != 'destroy'
         id: plan
         run: terraform plan -no-color -out=tfplan
-        continue-on-error: true
+     
 
       # 4️⃣ Apply (Runs ONLY on Push OR Manual Apply)
       - name: Terraform Apply
