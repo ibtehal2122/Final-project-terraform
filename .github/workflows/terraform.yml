@@ -68,9 +68,9 @@ jobs:
         run: terraform plan -no-color -out=tfplan
         continue-on-error: true
 
-      - name: Check Plan Failure
-        if: steps.plan.outcome == 'failure'
-        run: exit 1
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
 
       # 4️⃣ Apply (Runs ONLY on Push OR Manual Apply)
       - name: Terraform Apply
