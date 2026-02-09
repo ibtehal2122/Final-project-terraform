@@ -75,16 +75,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ansible python3-pip apt-transport-https gnupg curl
           
-          # Install Helm (مهم جداً لتنزيل ArgoCD & Monitoring)
-          curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
-          sudo apt-get update
-          sudo apt-get install -y helm
+          # --- التعديل هنا (Install Helm via Script) ---
+          # بدل ما نعتمد على apt repo اللي بيقع، هننزله من المصدر الرسمي مباشرة
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh
+          # ---------------------------------------------
 
-          # Install Python Libraries (الوصلة بين Ansible و Kubernetes)
+          # Install Python Libs
           pip3 install kubernetes helm --break-system-packages
           
-          # Install Ansible Kubernetes Collection
+          # Install Ansible Collection
           ansible-galaxy collection install kubernetes.core
 
       - name: Run Ansible Playbook
