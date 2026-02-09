@@ -17,7 +17,7 @@
     chart_ref: argo/argo-cd
     release_namespace: argocd
     create_namespace: false
-    version: "5.51.6" # دايماً ثبتي النسخة في الإنتاج
+    chart_version: "5.51.6" # دايماً ثبتي النسخة في الإنتاج
     values:
       server:
         service:
