@@ -1,10 +1,10 @@
-variable "repository_names" {
-  description = "List of repository names"
-  type        = list(string)
-  default     = ["backend", "frontend"]
+variable "repository_name" {
+  description = "Name of the ECR repository"
+  type        = string
 }
 
-variable "tags" {
-  type    = map(string)
-  default = {}
+variable "common_tags" {
+  description = "Common tags for all resources"
+  type        = map(string)
+  default     = {}
 }

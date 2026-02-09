@@ -1,0 +1,36 @@
+---
+- name: Create ArgoCD Namespace
+  kubernetes.core.k8s:
+    name: argocd
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add ArgoCD Helm Repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: "https://argoproj.github.io/argo-helm"
+
+- name: Deploy ArgoCD via Helm
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    release_namespace: argocd
+    create_namespace: false
+    version: "5.51.6" # دايماً ثبتي النسخة في الإنتاج
+    values:
+      server:
+        service:
+          type: LoadBalancer # عشان تقدري تدخلي عليه من المتصفح
+  register: argocd_status
+
+- name: Wait for ArgoCD Server to be Ready
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: argocd
+    label_selectors:
+      - app.kubernetes.io/name=argocd-server
+  register: pod_list
+  until: pod_list.resources | length > 0 and (pod_list.resources[0].status.containerStatuses[0].ready | default(false))
+  retries: 10
+  delay: 15

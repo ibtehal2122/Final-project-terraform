@@ -1,10 +1,14 @@
-output "repository_urls" {
-  description = "Map of repository names to their URLs"
-  # بيرجع Map: الاسم => اللينك
-  value = { for k, v in module.ecr : k => v.repository_url }
+output "repository_url" {
+  description = "The URL of the repository"
+  value       = aws_ecr_repository.repo.repository_url
 }
 
-output "repository_arns" {
-  description = "Map of repository names to their ARNs"
-  value       = { for k, v in module.ecr : k => v.repository_arn }
+output "repository_arn" {
+  description = "Full ARN of the repository"
+  value       = aws_ecr_repository.repo.arn
+}
+
+output "registry_id" {
+  description = "The registry ID where the repository was created"
+  value       = aws_ecr_repository.repo.registry_id
 }

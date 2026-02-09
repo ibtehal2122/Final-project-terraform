@@ -1,35 +1,30 @@
-module "ecr" {
-  source  = "terraform-aws-modules/ecr/aws"
-  version = "~> 1.6"
+resource "aws_ecr_repository" "repo" {
+  name                 = var.repository_name
+  image_tag_mutability = "MUTABLE"
 
-  # Create a repo for each name in the list (backend & frontend)
-  for_each = toset(var.repository_names)
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 
-  repository_name = each.key
+  tags = var.common_tags
+}
 
-  # Security: Scan images for CVEs on push
-  repository_image_scan_on_push = true
-  repository_type               = "private"
+# Optional: Add a lifecycle policy to clean up old images and save costs
+resource "aws_ecr_lifecycle_policy" "cleanup" {
+  repository = aws_ecr_repository.repo.name
 
-  # Cost: Automatically delete untagged images after 14 days
-  create_lifecycle_policy = true
-  repository_lifecycle_policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1,
-        description  = "Expire untagged images older than 14 days",
-        selection = {
-          tagStatus   = "untagged",
-          countType   = "sinceImagePushed",
-          countUnit   = "days",
-          countNumber = 14
-        },
-        action = {
-          type = "expire"
-        }
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus     = "any"
+        countType     = "imageCountMoreThan"
+        countNumber   = 10
       }
-    ]
+      action = {
+        type = "expire"
+      }
+    }]
   })
-
-  tags = var.tags
 }

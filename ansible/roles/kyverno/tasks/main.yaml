@@ -1,0 +1,22 @@
+---
+- name: Add Kyverno Helm Repository
+  kubernetes.core.helm_repository:
+    name: kyverno
+    repo_url: "https://kyverno.github.io/kyverno/"
+
+- name: Deploy Kyverno Policy Engine
+  kubernetes.core.helm:
+    name: kyverno
+    chart_ref: kyverno/kyverno
+    release_namespace: kyverno
+    create_namespace: true
+    version: "3.1.4" # نسخة مستقرة وحديثة
+    values:
+      admissionController:
+        replicas: 1 # كفاية نسخة واحدة لمشروع التخرج (التوفير في الموارد)
+      backgroundController:
+        replicas: 1
+      cleanupController:
+        replicas: 1
+      reportsController:
+        replicas: 1
