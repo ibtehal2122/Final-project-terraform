@@ -73,14 +73,14 @@ jobs:
       - name: Install Tools (Ansible, Helm, Kubectl)
         run: |
           sudo apt-get update
+          # نزلنا الأدوات الأساسية بس (شلنا helm من هنا)
           sudo apt-get install -y ansible python3-pip apt-transport-https gnupg curl
           
-          # --- التعديل هنا (Install Helm via Script) ---
-          # بدل ما نعتمد على apt repo اللي بيقع، هننزله من المصدر الرسمي مباشرة
+          # --- التعديل الجديد: تنزيل Helm من السكريبت الرسمي ---
           curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
           chmod 700 get_helm.sh
           ./get_helm.sh
-          # ---------------------------------------------
+          # -----------------------------------------------------
 
           # Install Python Libs
           pip3 install kubernetes helm --break-system-packages
