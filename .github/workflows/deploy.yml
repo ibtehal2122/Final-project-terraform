@@ -89,7 +89,6 @@ jobs:
           ansible-galaxy collection install kubernetes.core
 
       - name: Run Ansible Playbook
-        # 14. تشغيل الـ Playbook مع تمرير المتغيرات
         run: |
           ansible-playbook playbook.yaml \
-          --extra-vars "aws_region=${{ env.AWS_REGION }} eks_cluster_name=${{ env.CLUSTER_NAME }}"
+          --extra-vars "aws_region=${{ env.AWS_REGION }} eks_cluster_name=${{ env.CLUSTER_NAME }} ansible_python_interpreter=/usr/bin/python3"
