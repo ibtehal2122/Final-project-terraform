@@ -27,9 +27,10 @@ resource "aws_eks_cluster" "eks" {
   vpc_config {
     subnet_ids              = var.private_subnets
     endpoint_public_access  = true
-    endpoint_private_access = true 
-    # public_access_cidrs     = [var.my_ip] # هنا التعديل السحري
+    endpoint_private_access = true     # ضروري جداً لتواصل الـ Nodes داخلياً
+    # public_access_cidrs     = [var.my_ip] # تركناه تعليقاً ليعمل الـ Pipeline بسهولة
   }
+
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy
   ]
