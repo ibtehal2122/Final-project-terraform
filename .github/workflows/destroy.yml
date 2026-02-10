@@ -1,18 +1,21 @@
-name: "💀 Destroy Infrastructure"
+name: "💀 Destroy Infrastructure (Force Clean)"
 
 on:
-  workflow_dispatch: # 👈 ده معناه إنه مش هيشتغل غير لما تدوسي زرار بايدك
+  workflow_dispatch:
 
 env:
   AWS_REGION: "us-east-1"
+  TF_WORKING_DIR: "./terraform"
+  EKS_CLUSTER_NAME: "ebtehal-final-eks"
+  ECR_REPO_NAME: "ebtehal-final-eks-repo"
 
 jobs:
-  terraform-destroy:
-    name: "Destroy Everything 💥"
+  force-destroy:
+    name: "Clean & Destroy"
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
     steps:
       - name: Checkout Code
@@ -25,12 +28,68 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # ---------------------------------------------------------
+      # 🧹 الخطوة 1: تنظيف الـ Load Balancers "غصب"
+      # (أهم خطوة لحل مشكلة الـ VPC Dependency)
+      # ---------------------------------------------------------
+      - name: 🧹 Force Cleanup Load Balancers
+        run: |
+          echo "🔍 Searching for Load Balancers created by Kubernetes..."
+          
+          # هات الـ VPC ID من الـ Cluster (لو موجود)
+          VPC_ID=$(aws eks describe-cluster --name ${{ env.EKS_CLUSTER_NAME }} --query "cluster.resourcesVpcConfig.vpcId" --output text || echo "None")
+          
+          if [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "" ]; then
+            echo "🎯 Cluster VPC ID: $VPC_ID"
+            
+            # هات كل الـ LBs اللي في الـ VPC ده
+            LBS=$(aws elb describe-load-balancers --query "LoadBalancerDescriptions[?VPCId=='$VPC_ID'].LoadBalancerName" --output text)
+            
+            for lb in $LBS; do
+              echo "🔥 Deleting Classic Load Balancer: $lb"
+              aws elb delete-load-balancer --load-balancer-name $lb
+            done
+            
+            # لو فيه Network Load Balancers (v2)
+            LBS_V2=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" --output text)
+            
+            for lb_arn in $LBS_V2; do
+              echo "🔥 Deleting Network Load Balancer: $lb_arn"
+              aws elbv2 delete-load-balancer --load-balancer-arn $lb_arn
+            done
+            
+            echo "⏳ Waiting 30s for AWS to release IPs..."
+            sleep 30
+          else
+            echo "⚠️ Cluster not found or VPC ID unavailable. Skipping LB cleanup."
+          fi
+
+      # ---------------------------------------------------------
+      # 🗑️ الخطوة 2: تفريغ الـ ECR (عشان يرضى يتمسح)
+      # ---------------------------------------------------------
+      - name: 🗑️ Empty ECR Repository
+        run: |
+          echo "Emptying ECR: ${{ env.ECR_REPO_NAME }}"
+          IMAGES=$(aws ecr list-images --repository-name ${{ env.ECR_REPO_NAME }} --query 'imageIds[*]' --output json || echo "[]")
+          if [[ "$IMAGES" != "[]" ]]; then
+            aws ecr batch-delete-image --repository-name ${{ env.ECR_REPO_NAME }} --image-ids "$IMAGES"
+            echo "✅ Images Deleted."
+          else
+            echo "✅ Repo is already empty."
+          fi
+
+      # ---------------------------------------------------------
+      # 💥 الخطوة 3: التدمير بـ Terraform
+      # ---------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ secrets.BUCKET }}"
 
-      # ⚠️ الأمر ده هيمسح كل حاجة بلا رجعة
+      # بنعمل Refresh عشان يكتشف إننا مسحنا الـ LBs من وراه وميزعلش
+      - name: Terraform Refresh
+        run: terraform refresh
+
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
