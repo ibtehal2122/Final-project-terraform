@@ -1,22 +1,25 @@
 name: "Production Deployment Pipeline"
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
   workflow_dispatch:
 
 env:
   AWS_REGION: "us-east-1"
-  CLUSTER_NAME: "ebtehal-final-eks"
+  EKS_CLUSTER: "ebtehal-final-eks"
 
 permissions:
-  id-token: write # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
-  # ---------------------------------------------------
-  # Job 1: Terraform (Infrastructure)
-  # ---------------------------------------------------
   terraform:
-    name: "Provision Infrastructure (Terraform)"
+    name: "Deploy Infrastructure"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,10 +29,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name of "Configure AWS Credentials"
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role # Replace with your IAM role ARN
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
@@ -44,12 +47,13 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: terraform plan -no-color -out=tfplan
-      
-      - name: Manual Approval
+
+      - name: Manual Approval for Terraform Apply
+        if: github.event_name == 'push'
         uses: trstringer/manual-approval@v1
         with:
           secret: ${{ github.TOKEN }}
-          approvers: "ebtehal-9" # Replace with your GitHub username
+          approvers: "ebtehal-9"
           minimum-approvals: 1
           issue-title: "Deployment Plan for ${{ github.sha }}"
           issue-body: |
@@ -57,35 +61,41 @@ jobs:
             ```
             ${{ steps.plan.outputs.stdout }}
             ```
-          
+
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
 
-  # ---------------------------------------------------
-  # Job 2: Update GitOps Repository
-  # ---------------------------------------------------
-  update-gitops-repo:
-    name: "Update GitOps Repository"
+  ansible:
+    name: "Configure Cluster"
     needs: terraform
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout GitOps Repository
-        uses: actions/checkout@v4
-        with:
-          repository: "ebtehal-9/gitops-repo" # Replace with your GitOps repository
-          token: ${{ secrets.GITOPS_REPO_TOKEN }} # A PAT with repo write access
+    defaults:
+      run:
+        working-directory: ./ansible
 
-      - name: Update Application Version
-        run: |
-          # This is a placeholder for your logic to update the application version
-          # For example, you might update a Kustomize overlay or a Helm values file
-          sed -i "s/tag: .*/tag: ${{ github.sha }}/" my-app/deployment.yaml
-          
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "github-actions@github.com"
-          git add .
-          git commit -m "Update application to version ${{ github.sha }}"
-          git push
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible
+        run: pip install ansible-core==2.16.5
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install kubernetes.core
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Run Ansible Playbook
+        run: ansible-playbook playbook.yaml

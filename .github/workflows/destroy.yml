@@ -5,23 +5,18 @@ on:
 
 env:
   AWS_REGION: "us-east-1"
-  CLUSTER_NAME: "ebtehal-final-eks"
+  EKS_CLUSTER: "ebtehal-final-eks"
+  ECR_REPO: "ebtehal-final-eks-app" # The name of your ECR repository
 
 permissions:
-  id-token: write # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
-  # ---------------------------------------------------
-  # Job 1: Terraform Destroy
-  # ---------------------------------------------------
-  terraform-destroy:
-    name: "Destroy Infrastructure (Terraform)"
+  destroy:
+    name: "Destroy Infrastructure"
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./terraform
-
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -29,23 +24,32 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role # Replace with your IAM role ARN
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Manual Approval for Terraform Destroy
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: "ebtehal-9"
+          minimum-approvals: 1
+          issue-title: "Destroy Plan for ${{ github.sha }}"
+          issue-body: "Are you sure you want to destroy the infrastructure?"
+
+      - name: Empty ECR Repository
+        run: |
+          IMAGES_TO_DELETE=$(aws ecr list-images --repository-name ${{ env.ECR_REPO }} --query "imageIds[*]" --output json)
+          if [ "$IMAGES_TO_DELETE" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name ${{ env.ECR_REPO }} --image-ids "$IMAGES_TO_DELETE"
+          fi
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
+        working-directory: ./terraform
         run: terraform init
 
-      - name: Manual Approval
-        uses: trstringer/manual-approval@v1
-        with:
-          secret: ${{ github.TOKEN }}
-          approvers: "ebtehal-9" # Replace with your GitHub username
-          minimum-approvals: 1
-          issue-title: "Destroy Plan for ${{ github.sha }}"
-          issue-body: "Please review the Terraform destroy plan below and approve or deny the destruction."
-          
       - name: Terraform Destroy
+        working-directory: ./terraform
         run: terraform destroy -auto-approve
