@@ -1,18 +1,27 @@
-name: "🧨 Emergency Force Cleanup"
+name: "Production Destroy Pipeline"
 
 on:
   workflow_dispatch:
 
 env:
   AWS_REGION: "us-east-1"
-  # This is the VPC ID from your error log
-  VPC_ID: "vpc-07a7ff701c7a11f12" 
-  TF_BACKEND_BUCKET: ${{ secrets.BUCKET }}
+  CLUSTER_NAME: "ebtehal-final-eks"
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
 
 jobs:
-  nuke-dependencies:
-    name: "Force Delete VPC Dependencies"
+  # ---------------------------------------------------
+  # Job 1: Terraform Destroy
+  # ---------------------------------------------------
+  terraform-destroy:
+    name: "Destroy Infrastructure (Terraform)"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -20,79 +29,23 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role # Replace with your IAM role ARN
           aws-region: ${{ env.AWS_REGION }}
 
-      # ---------------------------------------------------------
-      # STEP 1: Delete Load Balancers (The usual suspects)
-      # ---------------------------------------------------------
-      - name: 🧹 Delete Load Balancers
-        run: |
-          echo "🔍 Finding Load Balancers in VPC: ${{ env.VPC_ID }}"
-          
-          # 1. Classic ELBs
-          CLBS=$(aws elb describe-load-balancers --query "LoadBalancerDescriptions[?VPCId=='${{ env.VPC_ID }}'].LoadBalancerName" --output text)
-          for lb in $CLBS; do
-            echo "🔥 Deleting Classic LB: $lb"
-            aws elb delete-load-balancer --load-balancer-name $lb
-          done
-
-          # 2. Network/Application LBs (ALB/NLB)
-          VLBS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?VpcId=='${{ env.VPC_ID }}'].LoadBalancerArn" --output text)
-          for lb in $VLBS; do
-            echo "🔥 Deleting V2 LB: $lb"
-            # Enable deletion protection just in case, then delete
-            aws elbv2 modify-load-balancer-attributes --load-balancer-arn $lb --attributes Key=deletion_protection.enabled,Value=false
-            aws elbv2 delete-load-balancer --load-balancer-arn $lb
-            echo "   (Deleted)"
-          done
-          
-          echo "⏳ Waiting 30s for LBs to drain..."
-          sleep 30
-
-      # ---------------------------------------------------------
-      # STEP 2: Delete "Ghost" Network Interfaces (ENIs)
-      # This is usually what blocks the VPC delete
-      # ---------------------------------------------------------
-      - name: 🧹 Delete Stuck Network Interfaces
-        run: |
-          echo "🔍 Finding Network Interfaces in VPC: ${{ env.VPC_ID }}"
-          
-          # Get all ENIs in the VPC
-          ENIS=$(aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=${{ env.VPC_ID }} --query "NetworkInterfaces[*].NetworkInterfaceId" --output text)
-          
-          for eni in $ENIS; do
-            echo "🔥 Attempting to delete ENI: $eni"
-            # Try to detach first (forcefully)
-            aws ec2 delete-network-interface --network-interface-id $eni || true
-          done
-
-      # ---------------------------------------------------------
-      # STEP 3: Delete Security Groups (except 'default')
-      # ---------------------------------------------------------
-      - name: 🧹 Delete Security Groups
-        run: |
-          SGS=$(aws ec2 describe-security-groups --filters Name=vpc-id,Values=${{ env.VPC_ID }} --query "SecurityGroups[?GroupName!='default'].GroupId" --output text)
-          
-          for sg in $SGS; do
-            echo "🔥 Deleting SG: $sg"
-            aws ec2 delete-security-group --group-id $sg || echo "   (Could not delete yet, might be attached to something else)"
-          done
-
-      # ---------------------------------------------------------
-      # STEP 4: Terraform Destroy (Clean Finish)
-      # ---------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: |
-          cd terraform
-          terraform init -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}"
+        run: terraform init
 
+      - name: Manual Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: "ebtehal-9" # Replace with your GitHub username
+          minimum-approvals: 1
+          issue-title: "Destroy Plan for ${{ github.sha }}"
+          issue-body: "Please review the Terraform destroy plan below and approve or deny the destruction."
+          
       - name: Terraform Destroy
-        run: |
-          cd terraform
-          terraform refresh
-          terraform destroy -auto-approve
+        run: terraform destroy -auto-approve

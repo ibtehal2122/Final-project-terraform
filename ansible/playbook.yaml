@@ -1,23 +1,21 @@
----
-- name: EKS Bootstrap - Install Tools
+- name: Configure EKS Cluster
   hosts: localhost
   connection: local
   gather_facts: false
 
-  vars:
-    # تأكدي إن الاسم هنا مطابق للاسم اللي في Terraform
-    eks_cluster_name: "ebtehal-final-eks"
-    aws_region: "us-east-1"
+  vars_files:
+    - group_vars/all.yaml
 
   pre_tasks:
-    # الخطوة دي عشان نضمن إننا بنكلم الكلستر الصح
-    - name: Update Kubeconfig
-      ansible.builtin.shell: |
-        aws eks update-kubeconfig --region {{ aws_region }} --name {{ eks_cluster_name }}
+    - name: Update kubeconfig
+      ansible.builtin.shell:
+        cmd: aws eks update-kubeconfig --region {{ aws_region }} --name {{ eks_cluster_name }}
       changed_when: false
 
   roles:
-    # هنا بننادي على الـ Role اللي انتي جهزتيها في الخطوة اللي فاتت
     - role: argocd
+      tags: argocd
     - role: monitoring
+      tags: monitoring
     - role: kyverno
+      tags: kyverno

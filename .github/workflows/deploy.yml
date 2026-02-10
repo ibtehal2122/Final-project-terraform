@@ -1,92 +1,91 @@
 name: "Production Deployment Pipeline"
 
 on:
-  push:
-    branches:
-      - main  # 1. يشتغل فقط عند عمل Push لفرع الـ main
+  workflow_dispatch:
 
 env:
   AWS_REGION: "us-east-1"
-  CLUSTER_NAME: "ebtehal-final-eks" # 2. نفس الاسم الموجود في Terraform
+  CLUSTER_NAME: "ebtehal-final-eks"
 
 permissions:
-  contents: read # 3. تصريح قراءة الكود فقط (Security Best Practice)
+  id-token: write # Required for OIDC
+  contents: read
 
 jobs:
   # ---------------------------------------------------
-  # Job 1: Terraform (بناء البنية التحتية)
+  # Job 1: Terraform (Infrastructure)
   # ---------------------------------------------------
   terraform:
     name: "Provision Infrastructure (Terraform)"
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./terraform # 4. الدخول لمجلد التيررافورم
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4 # 5. سحب الكود من GitHub
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4 # 6. تسجيل الدخول لـ AWS
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3 # 7. تنزيل وتسطيب Terraform
-
-      - name: Terraform Init
-        run: terraform init # 8. تهيئة المشروع وتحميل الـ Providers
-
-      - name: Terraform Validate
-        run: terraform validate # 9. التأكد من صحة الكود
-
-      - name: Terraform Apply
-        # 10. التنفيذ الفعلي وبناء الـ Resources
-        run: terraform apply -auto-approve
-
-  # ---------------------------------------------------
-  # Job 2: Ansible (تجهيز الكلستر بالتطبيقات)
-  # ---------------------------------------------------
-  ansible:
-    name: "Configure Cluster (Ansible)"
-    needs: terraform  # 11. لا تبدأ إلا بعد نجاح التيررافورم
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./ansible # 12. الدخول لمجلد الأنسبل
+        working-directory: ./terraform
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name of "Configure AWS Credentials"
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-role # Replace with your IAM role ARN
           aws-region: ${{ env.AWS_REGION }}
 
-      # 13. تسطيب الأدوات اللازمة للـ Ansible للتعامل مع EKS
-      - name: Install Tools (Ansible, Helm, Kubectl)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible python3-pip apt-transport-https gnupg curl
-          
-          # Install Helm Binary (The Real One)
-          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-          chmod 700 get_helm.sh
-          ./get_helm.sh
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-          # Install Python Libs (Remove 'helm' from here!)
-          pip3 install kubernetes --break-system-packages
-          
-          # Install Ansible Collection
-          ansible-galaxy collection install kubernetes.core
+      - name: Terraform Init
+        run: terraform init
 
-      - name: Run Ansible Playbook
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -out=tfplan
+      
+      - name: Manual Approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: "ebtehal-9" # Replace with your GitHub username
+          minimum-approvals: 1
+          issue-title: "Deployment Plan for ${{ github.sha }}"
+          issue-body: |
+            Please review the Terraform plan below and approve or deny the deployment.
+            ```
+            ${{ steps.plan.outputs.stdout }}
+            ```
+          
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+  # ---------------------------------------------------
+  # Job 2: Update GitOps Repository
+  # ---------------------------------------------------
+  update-gitops-repo:
+    name: "Update GitOps Repository"
+    needs: terraform
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout GitOps Repository
+        uses: actions/checkout@v4
+        with:
+          repository: "ebtehal-9/gitops-repo" # Replace with your GitOps repository
+          token: ${{ secrets.GITOPS_REPO_TOKEN }} # A PAT with repo write access
+
+      - name: Update Application Version
         run: |
-          ansible-playbook playbook.yaml \
-          --extra-vars "aws_region=${{ env.AWS_REGION }} eks_cluster_name=${{ env.CLUSTER_NAME }} ansible_python_interpreter=/usr/bin/python3"
+          # This is a placeholder for your logic to update the application version
+          # For example, you might update a Kustomize overlay or a Helm values file
+          sed -i "s/tag: .*/tag: ${{ github.sha }}/" my-app/deployment.yaml
+          
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "github-actions@github.com"
+          git add .
+          git commit -m "Update application to version ${{ github.sha }}"
+          git push

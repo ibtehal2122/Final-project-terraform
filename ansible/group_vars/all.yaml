@@ -1,0 +1,16 @@
+aws_region: "us-east-1"
+eks_cluster_name: "ebtehal-final-eks"
+
+# ArgoCD
+argocd_chart_version: "5.51.6"
+argocd_helm_values: "{{ lookup('template', 'roles/argocd/templates/values.yaml.j2') }}"
+
+# Monitoring
+monitoring_chart_version: "56.6.2"
+monitoring_helm_values: "{{ lookup('template', 'roles/monitoring/templates/values.yaml.j2') }}"
+grafana_admin_password: "admin" # Change this in a secure way, e.g., using Ansible Vault
+
+# Kyverno
+kyverno_chart_version: "3.1.4"
+kyverno_helm_values: "{{ lookup('template', 'roles/kyverno/templates/values.yaml.j2') }}"
+kyverno_replicas: 3

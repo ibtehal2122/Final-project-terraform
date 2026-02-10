@@ -1,25 +1,39 @@
----
-- name: Create Monitoring Namespace
+- name: Create monitoring namespace
   kubernetes.core.k8s:
     name: monitoring
     api_version: v1
     kind: Namespace
     state: present
 
-- name: Add Prometheus Community Helm Repo
+- name: Add Prometheus Community Helm repository
   kubernetes.core.helm_repository:
     name: prometheus-community
     repo_url: "https://prometheus-community.github.io/helm-charts"
+    state: present
 
-- name: Deploy Prometheus Stack (Prometheus + Grafana)
+- name: Create Grafana admin password secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: grafana-admin-credentials
+        namespace: monitoring
+      stringData:
+        admin-user: admin
+        admin-password: "{{ grafana_admin_password }}"
+
+- name: Deploy kube-prometheus-stack
   kubernetes.core.helm:
-    name: monitoring-stack
+    name: kube-prometheus-stack
     chart_ref: prometheus-community/kube-prometheus-stack
     release_namespace: monitoring
     create_namespace: false
-    chart_version: "56.6.2" # تثبيت النسخة لضمان الاستقرار
-    values:
-      grafana:
-        service:
-          type: LoadBalancer # عشان تفتحي Grafana من المتصفح بسهولة
-        adminPassword: "admin" # (للتسهيل في مشروع التخرج، لكن في الإنتاج بنستخدم Secrets)
+    chart_version: "{{ monitoring_chart_version }}"
+    values: "{{ monitoring_helm_values | from_yaml }}"
+
+- name: Create Ingress for Grafana
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'roles/monitoring/templates/ingress.yaml.j2') }}"

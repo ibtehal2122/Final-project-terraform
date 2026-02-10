@@ -1,12 +1,29 @@
-variable "project_name" {}
-variable "vpc_cidr" {}
-
-variable "public_subnets" {
-  default = ["10.0.1.0/24", "10.0.2.0/24"]
+variable "project_name" {
+  description = "The name of the project"
+  type        = string
 }
 
-variable "private_subnets" {
-  default = ["10.0.3.0/24", "10.0.4.0/24"]
+variable "vpc_cidr" {
+  description = "The CIDR block for the VPC"
+  type        = string
+}
+
+variable "num_public_subnets" {
+  description = "The number of public subnets to create"
+  type        = number
+  default     = 2
+}
+
+variable "num_private_subnets" {
+  description = "The number of private subnets to create"
+  type        = number
+  default     = 2
+}
+
+variable "num_nat_gateways" {
+  description = "The number of NAT gateways to create"
+  type        = number
+  default     = 2
 }
 
 variable "common_tags" {
